@@ -261,7 +261,8 @@ install(FILES ${VTK_BINARY_DIR}/CMakeFiles/VTKConfig.cmake
   DESTINATION ${VTK_INSTALL_PACKAGE_DIR})
 get_property(VTK_TARGETS GLOBAL PROPERTY VTK_TARGETS)
 if(VTK_TARGETS)
-  install(EXPORT VTKTargets DESTINATION ${VTK_INSTALL_PACKAGE_DIR})
+  # cjh restore when I know what is going on!
+  #install(EXPORT VTKTargets DESTINATION ${VTK_INSTALL_PACKAGE_DIR})
 else()
   set(CMAKE_CONFIGURABLE_FILE_CONTENT "# No targets!")
   configure_file(${CMAKE_ROOT}/Modules/CMakeConfigurableFile.in
