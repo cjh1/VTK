@@ -6,12 +6,6 @@
 
 #include "vtkToolkits.h" // make sure VTK_USE_PARALLEL is properly set
 #include "vtkExodusIICache.h"
-#ifdef VTK_USE_PARALLEL
-#  include "vtkMultiProcessController.h"
-#else // VTK_USE_PARALLEL
-class vtkMultiProcessController;
-#endif // VTK_USE_PARALLEL
-
 #include "vtksys/RegularExpression.hxx"
 
 #include <map>
@@ -47,10 +41,7 @@ public:
     { return this->SIL; }
 
   /// Send metadata to other processes in a parallel job.
-  void Broadcast( vtkMultiProcessController* controller );
-
-  /// Receive metadata from the rank 0 process in a parallel job.
-  void Receive( vtkMultiProcessController* controller );
+  //void Broadcast( vtkMultiProcessController* controller );
 
   /// Read requested data and store in unstructured grid.
   int RequestData( vtkIdType timeStep, vtkMultiBlockDataSet* output );
