@@ -14,6 +14,9 @@ set(parallel_overrides
   StreamTracer
   )
 
+# FIXME: To be removed when #ifdef's have been removed
+set(${vtk-module}_EXPORT_CODE "#define VTK_USE_MPI")
+
 foreach(_override ${parallel_overrides})
   vtk_add_override(vtk${_override} vtkP${_override})
 endforeach()
