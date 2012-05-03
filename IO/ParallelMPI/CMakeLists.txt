@@ -6,6 +6,7 @@ set(${vtk-module}_EXPORT_CODE "#define VTK_USE_MPI")
 
 set(Module_SRCS
   vtkMPIImageReader.cxx
+  vtkPNrrdReader.cxx
   )
 
 vtk_module_library(vtkIOParallelMPI ${Module_SRCS})
