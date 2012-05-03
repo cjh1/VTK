@@ -24,7 +24,7 @@
 #ifndef __vtkTemporalStreamTracer_h
 #define __vtkTemporalStreamTracer_h
 
-#include "vtkFiltersParallelTracersModule.h" // For export macro
+#include "vtkFiltersTracersModule.h" // For export macro
 #include "vtkSmartPointer.h" // For protected ivars.
 #include "vtkStreamTracer.h"
 
@@ -83,7 +83,7 @@ namespace vtkTemporalStreamTracerNamespace
 };
 //ETX
 
-class VTKFILTERSPARALLELTRACERS_EXPORT vtkTemporalStreamTracer : public vtkStreamTracer
+class VTKFILTERSTRACERS_EXPORT vtkTemporalStreamTracer : public vtkStreamTracer
 {
 public:
 
@@ -177,14 +177,6 @@ public:
     vtkBooleanMacro(StaticMesh,int);
 
     // Description:
-    // Set/Get the controller used when sending particles between processes
-    // The controller must be an instance of vtkMPIController.
-    // If VTK was compiled without VTK_USE_MPI on, then the Controller is simply
-    // ignored.
-    virtual void SetController(vtkMultiProcessController* controller);
-    vtkGetObjectMacro(Controller, vtkMultiProcessController);
-
-    // Description:
     // Set/Get the Writer associated with this Particle Tracer
     // Ideally a parallel IO capable vtkH5PartWriter should be used
     // which will collect particles from all parallel processes
@@ -272,7 +264,7 @@ public:
     // they belong to. This saves us retesting at every injection time
     // providing 1) The volumes are static, 2) the seed points are static
     // If either are non static, then this step is skipped.
-    void AssignSeedsToProcessors(
+    virtual void AssignSeedsToProcessors(
       vtkDataSet *source, int sourceID, int ptId,
       vtkTemporalStreamTracerNamespace::ParticleVector &LocalSeedPoints,
       int &LocalAssignedCount);
@@ -280,7 +272,7 @@ public:
     // Description : once seeds have been assigned to a process, we
     // give each one a uniqu ID. We need to use MPI to find out
     // who is using which numbers.
-    void AssignUniqueIds(
+    virtual void AssignUniqueIds(
       vtkTemporalStreamTracerNamespace::ParticleVector &LocalSeedPoints);
 
     // Description : copy list of particles from a vector used for testing particles
@@ -292,7 +284,7 @@ public:
     // Description : Perform a GatherV operation on a vector of particles
     // this is used during classification of seed points and also between iterations
     // of the main loop as particles leave each processor domain
-    void TransmitReceiveParticles(
+    virtual void TransmitReceiveParticles(
       vtkTemporalStreamTracerNamespace::ParticleVector &outofdomain,
       vtkTemporalStreamTracerNamespace::ParticleVector &received,
       bool removeself);
@@ -421,9 +413,6 @@ public:
     bool InsideBounds(double point[]);
 
 //ETX
-
-  // MPI controller needed when running in parallel
-  vtkMultiProcessController* Controller;
 
   // global Id counter used to give particles a stamp
   vtkIdType UniqueIdCounter;

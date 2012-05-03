@@ -31,7 +31,6 @@ PURPOSE.  See the above copyright notice for more information.
 #include "vtkCharArray.h"
 #include "vtkMath.h"
 #include "vtkMultiBlockDataSet.h"
-#include "vtkMultiProcessController.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkPointSet.h"
@@ -56,10 +55,6 @@ PURPOSE.  See the above copyright notice for more information.
 #ifdef JB_H5PART_PARTICLE_OUTPUT
 // #include "vtkH5PartWriter.h"
   #include "vtkXMLParticleWriter.h"
-#endif
-
-#ifdef VTK_USE_MPI
-  #include "vtkMPIController.h"
 #endif
 
 #include <functional>
@@ -93,7 +88,6 @@ using namespace vtkTemporalStreamTracerNamespace;
 #endif
 //---------------------------------------------------------------------------
 vtkStandardNewMacro(vtkTemporalStreamTracer);
-vtkCxxSetObjectMacro(vtkTemporalStreamTracer, Controller, vtkMultiProcessController);
 vtkCxxSetObjectMacro(vtkTemporalStreamTracer, ParticleWriter, vtkAbstractParticleWriter);
 //---------------------------------------------------------------------------
 vtkTemporalStreamTracer::vtkTemporalStreamTracer()
@@ -136,8 +130,6 @@ vtkTemporalStreamTracer::vtkTemporalStreamTracer()
   this->Interpolator = vtkSmartPointer<vtkTemporalInterpolatedVelocityField>::New();
   //
   this->SetNumberOfInputPorts(2);
-  this->Controller = NULL;
-  this->SetController(vtkMultiProcessController::GetGlobalController());
 
 #ifdef JB_H5PART_PARTICLE_OUTPUT
 #ifdef WIN32
@@ -156,7 +148,6 @@ vtkTemporalStreamTracer::vtkTemporalStreamTracer()
 //---------------------------------------------------------------------------
 vtkTemporalStreamTracer::~vtkTemporalStreamTracer()
 {
-  this->SetController(NULL);
   this->SetParticleWriter(NULL);
   if (this->ParticleFileName)
   {
@@ -562,6 +553,7 @@ void vtkTemporalStreamTracer::TestParticles(
     }
   }
 }
+
 //---------------------------------------------------------------------------
 void vtkTemporalStreamTracer::AssignSeedsToProcessors(
   vtkDataSet *source, int sourceID, int ptId,
@@ -598,37 +590,12 @@ void vtkTemporalStreamTracer::AssignSeedsToProcessors(
     info.speed                = 0.0;
     info.ErrorCode            = 0;
   }
-  //
-  // Gather all Seeds to all processors for classification
-  //
-#ifdef VTK_USE_MPI
-  // TODO : can we just use the same array here for send and receive
-  ParticleVector allCandidates;
-  if (this->UpdateNumPieces>1) {
-    // Gather all seed particles to all processes
-    this->TransmitReceiveParticles(candidates, allCandidates, false);
-#ifndef NDEBUG
-    numTested = static_cast<int>(allCandidates.size());
-#endif
-    vtkDebugMacro(<< "Local Particles " << numSeeds << " TransmitReceive Total " << numTested);
-    // Test to see which ones belong to us
-    this->TestParticles(allCandidates, LocalSeedPoints, LocalAssignedCount);
-  }
-  else {
-#ifndef NDEBUG
-    numTested = static_cast<int>(candidates.size());
-#endif
-    this->TestParticles(candidates, LocalSeedPoints, LocalAssignedCount);
-  }
-  int TotalAssigned = 0;
-  this->Controller->Reduce(&LocalAssignedCount, &TotalAssigned, 1, vtkCommunicator::SUM_OP, 0);
-#else
 #ifndef NDEBUG
   numTested = static_cast<int>(candidates.size());
 #endif
   this->TestParticles(candidates, LocalSeedPoints, LocalAssignedCount);
   int TotalAssigned = LocalAssignedCount; (void)TotalAssigned;
-#endif
+
   // Assign unique identifiers taking into account uneven distribution
   // across processes and seeds which were rejected
   this->AssignUniqueIds(LocalSeedPoints);
@@ -644,101 +611,18 @@ void vtkTemporalStreamTracer::AssignUniqueIds(
 {
   vtkIdType ParticleCountOffset = 0;
   vtkIdType numParticles = LocalSeedPoints.size();
-  if (this->UpdateNumPieces>1) {
-#ifdef VTK_USE_MPI
-    vtkMPICommunicator* com = vtkMPICommunicator::SafeDownCast(
-      this->Controller->GetCommunicator());
-    if (com == 0) {
-      vtkErrorMacro("MPICommunicator needed for this operation.");
-      return;
-    }
-    // everyone starts with the master index
-    com->Broadcast(&this->UniqueIdCounter, 1, 0);
-//    vtkErrorMacro("UniqueIdCounter " << this->UniqueIdCounter);
-    // setup arrays used by the AllGather call.
-    std::vector<vtkIdType> recvNumParticles(this->UpdateNumPieces, 0);
-    // Broadcast and receive count to/from all other processes.
-    com->AllGather(&numParticles, &recvNumParticles[0], 1);
-    // Each process is allocating a certain number.
-    // start our indices from sum[0,this->UpdatePiece](numparticles)
-    for (int i=0; i<this->UpdatePiece; ++i) {
-      ParticleCountOffset += recvNumParticles[i];
-    }
-    for (vtkIdType i=0; i<numParticles; i++) {
-      LocalSeedPoints[i].UniqueParticleId =
-        this->UniqueIdCounter + ParticleCountOffset + i;
-    }
-    for (int i=0; i<this->UpdateNumPieces; ++i) {
-      this->UniqueIdCounter += recvNumParticles[i];
-    }
-#endif
+  for (vtkIdType i=0; i<numParticles; i++) {
+    LocalSeedPoints[i].UniqueParticleId =
+      this->UniqueIdCounter + ParticleCountOffset + i;
   }
-  else {
-    for (vtkIdType i=0; i<numParticles; i++) {
-      LocalSeedPoints[i].UniqueParticleId =
-        this->UniqueIdCounter + ParticleCountOffset + i;
-    }
-    this->UniqueIdCounter += numParticles;
-  }
+
+  this->UniqueIdCounter += numParticles;
 }
 //---------------------------------------------------------------------------
-#ifdef VTK_USE_MPI
-void vtkTemporalStreamTracer::TransmitReceiveParticles(
-  ParticleVector &sending, ParticleVector &received, bool removeself)
-{
-  vtkMPICommunicator* com = vtkMPICommunicator::SafeDownCast(
-    this->Controller->GetCommunicator());
-  if (com == 0) {
-    vtkErrorMacro("MPICommunicator needed for this operation.");
-    return;
-  }
-  //
-  // We must allocate buffers for all processor particles
-  //
-  vtkIdType OurParticles = sending.size();
-  vtkIdType TotalParticles = 0;
-  // setup arrays used by the AllGatherV call.
-  std::vector<vtkIdType> recvLengths(this->UpdateNumPieces, 0);
-  std::vector<vtkIdType> recvOffsets(this->UpdateNumPieces, 0);
-  // Broadcast and receive size to/from all other processes.
-  com->AllGather(&OurParticles, &recvLengths[0], 1);
-  // Compute the displacements.
-  const vtkIdType TypeSize = sizeof(ParticleInformation);
-  for (int i=0; i<this->UpdateNumPieces; ++i)
-  {
-    //  << i << ": " << recvLengths[i] << "   ";
-    recvOffsets[i] = TotalParticles*TypeSize;
-    TotalParticles += recvLengths[i];
-    recvLengths[i] *= TypeSize;
-  }
-  //  << '\n';
-  // Allocate the space for all particles
-  received.resize(TotalParticles);
-  if (TotalParticles==0) return;
-  // Gather the data from all procs.
-  char *sendbuf = (char*) ((sending.size()>0) ? &(sending[0]) : NULL);
-  char *recvbuf = (char*) (&(received[0]));
-  com->AllGatherV(sendbuf, recvbuf,
-    OurParticles*TypeSize, &recvLengths[0], &recvOffsets[0]);
-  // Now all particles from all processors are in one big array
-  // remove any from ourself that we have already tested
-  if (removeself) {
-    std::vector<ParticleInformation>::iterator first =
-      received.begin() + recvOffsets[this->UpdatePiece]/TypeSize;
-    std::vector<ParticleInformation>::iterator last =
-      first + recvLengths[this->UpdatePiece]/TypeSize;
-    received.erase(first, last);
-  }
-  if (received.size()>0) {
-    TotalParticles=TotalParticles; // brkpnt
-  }
-}
-#else // VTK_USE_MPI
 void vtkTemporalStreamTracer::TransmitReceiveParticles(
   ParticleVector &, ParticleVector &, bool )
 {
 }
-#endif // VTK_USE_MPI
 //---------------------------------------------------------------------------
 void vtkTemporalStreamTracer::UpdateParticleList(ParticleVector &candidates)
 {
@@ -1139,9 +1023,6 @@ int vtkTemporalStreamTracer::RequestData(
     this->ParticleWriter->Write();
     this->ParticleWriter->CloseFile();
     this->ParticleWriter->SetInputData(NULL);
-#ifdef VTK_USE_MPI
-    this->Controller->Barrier();
-#endif
     vtkDebugMacro(<< "Written " << N);
   }
 //  this->Interpolator->ShowCacheResults();
@@ -1414,7 +1295,6 @@ bool vtkTemporalStreamTracer::SendParticleToAnotherProcess(ParticleInformation &
     this->Interpolator->GetLastGoodVelocity(velocity);
   }
   if (this->RetryWithPush(info, velocity, delT)) return 0;
-  this->AddParticleToMPISendList(info);
   return 1;
 }
 //---------------------------------------------------------------------------
@@ -1423,7 +1303,6 @@ void vtkTemporalStreamTracer::PrintSelf(ostream& os, vtkIndent indent)
   this->Superclass::PrintSelf(os,indent);
 
   os << indent << "TimeStepResolution: " << this->TimeStepResolution << endl;
-  os << indent << "Controller: " << this->Controller << endl;
   os << indent << "ParticleWriter: " << this->ParticleWriter << endl;
   os << indent << "ParticleFileName: " <<
     (this->ParticleFileName ? this->ParticleFileName : "None") << endl;
@@ -1457,23 +1336,6 @@ bool vtkTemporalStreamTracer::ComputeDomainExitLocation(
     intersection[3] = pos[3] + (t+0.01)*(p2[3]-pos[3]);
     return 1;
   }
-}
-//---------------------------------------------------------------------------
-void vtkTemporalStreamTracer::AddParticleToMPISendList(ParticleInformation &info)
-{
-  double eps = (this->CurrentTimeSteps[1]-this->CurrentTimeSteps[0])/100;
-  if (info.CurrentPosition.x[3]<(this->CurrentTimeSteps[0]-eps) ||
-      info.CurrentPosition.x[3]>(this->CurrentTimeSteps[1]+eps)) {
-    vtkDebugMacro(<< "Unexpected time value in MPISendList - expected ("
-      << this->CurrentTimeSteps[0] << "-" << this->CurrentTimeSteps[1] << ") got "
-      << info.CurrentPosition.x[3]);
-  }
-#ifdef VTK_USE_MPI
-  if (this->MPISendList.capacity()<(this->MPISendList.size()+1)) {
-    this->MPISendList.reserve(static_cast<int>(this->MPISendList.size()*1.5));
-  }
-  this->MPISendList.push_back(info);
-#endif
 }
 //---------------------------------------------------------------------------
 /*
