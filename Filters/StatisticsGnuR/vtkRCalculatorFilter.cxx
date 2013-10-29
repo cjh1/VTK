@@ -38,6 +38,8 @@
 #include "vtkDoubleArray.h"
 #include "vtkTable.h"
 #include "vtkTree.h"
+#include "vtkMultiPieceDataSet.h"
+#include "vtkStringArray.h"
 
 #include <stdlib.h>
 #include <string>
@@ -64,16 +66,77 @@ public:
 
 };
 
+class RVariableNames
+{
+
+public:
+  RVariableNames()
+    {
+    this->ResetNameIterator();
+    }
+
+  void SetName(std::string name)
+    {
+    this->Names.clear();
+    this->Names.push_back(name);
+    this->ResetNameIterator();
+    }
+
+  void SetNames(vtkStringArray* names)
+    {
+    this->Names.clear();
+    for (vtkIdType i = 0; i < names->GetNumberOfTuples(); ++i)
+      {
+      this->Names.push_back(names->GetValue(i));
+      }
+
+    this->ResetNameIterator();
+    }
+
+  void ResetNameIterator()
+    {
+    this->NameIterator = this->Names.begin();
+    }
+
+  std::string NextName()
+    {
+    if (this->NameIterator == this->Names.end())
+      {
+      return "";
+      }
+
+    return *this->NameIterator++;
+    }
+
+  void Clear()
+    {
+    this->Names.clear();
+    this->ResetNameIterator();
+    }
+
+  // TODO rename to count
+  int Size()
+    {
+    return this->Names.size();
+    }
+
+
+  std::vector<std::string> Names;
+  std::vector<std::string>::iterator NameIterator;
+
+};
+
 class vtkRCalculatorFilterInternals
 {
 
 public:
   std::vector<ArrNames> PutArrNames;
   std::vector<ArrNames> GetArrNames;
-  std::string PutTableName;
-  std::string GetTableName;
-  std::string PutTreeName;
-  std::string GetTreeName;
+  RVariableNames PutTableNames;
+  RVariableNames GetTableNames;
+  RVariableNames PutTreeNames;
+  RVariableNames GetTreeNames;
+
 };
 
 vtkRCalculatorFilter::vtkRCalculatorFilter()
@@ -269,11 +332,28 @@ int vtkRCalculatorFilter::RequestDataObject(
       vtkInformation* info = outputVector->GetInformationObject(i);
       vtkDataObject *output = info->Get(vtkDataObject::DATA_OBJECT());
 
-      if (!output || !output->IsA(input->GetClassName()))
+      if (input->IsA("vtkCompositeDataSet"))
         {
-        vtkDataObject* newOutput = input->NewInstance();
-        info->Set(vtkDataObject::DATA_OBJECT(), newOutput);
-        newOutput->Delete();
+
+        }
+
+      if (this->IsAsymmetric() || this->HasMultipleGets())
+        {
+        if (!output || !output->IsA("vtkMultiPieceDataSet"))
+          {
+          vtkDataObject* newOutput = vtkMultiPieceDataSet::New();
+          info->Set(vtkDataObject::DATA_OBJECT(), newOutput);
+          newOutput->Delete();
+          }
+        }
+      else
+        {
+         if (!output || !output->IsA(input->GetClassName()))
+           {
+           vtkDataObject* newOutput = input->NewInstance();
+           info->Set(vtkDataObject::DATA_OBJECT(), newOutput);
+           newOutput->Delete();
+           }
         }
       }
     return (1);
@@ -326,23 +406,57 @@ int vtkRCalculatorFilter::RequestData(vtkInformation *vtkNotUsed(request),
   // output's components.
   vtkCompositeDataSet* inComposite =
     vtkCompositeDataSet::SafeDownCast(input);
+  int tableCount = 0;
+  int treeCount = 0;
+  int itemCount = 0;
   if (inComposite)
+   {
+   vtkCompositeDataSet* outComposite =
+     vtkCompositeDataSet::SafeDownCast(output);
+   outComposite->CopyStructure(inComposite);
+   vtkCompositeDataIterator* iter = inComposite->NewIterator();
+   iter->InitTraversal();
+   for (iter->InitTraversal(); !iter->IsDoneWithTraversal();
+        iter->GoToNextItem())
+     {
+     vtkDataObject* currentDataObject = iter->GetCurrentDataObject();
+     if (currentDataObject->IsA("vtkTable"))
+       {
+       tableCount++;
+       }
+     else if (currentDataObject->IsA("vtkTree"))
+       {
+       treeCount++;
+       }
+
+
+     vtkDataObject* outComponent = currentDataObject->NewInstance();
+     outComposite->SetDataSet(iter, outComponent);
+     outComponent->Delete();
+     itemCount++;
+     }
+   iter->Delete();
+   }
+
+  if (this->HasMultipleGets())
     {
-    vtkCompositeDataSet* outComposite =
-      vtkCompositeDataSet::SafeDownCast(output);
-    outComposite->CopyStructure(inComposite);
-    vtkCompositeDataIterator* iter = inComposite->NewIterator();
-    iter->InitTraversal();
-    for (iter->InitTraversal(); !iter->IsDoneWithTraversal();
-         iter->GoToNextItem())
+    vtkMultiPieceDataSet* outComposite =
+        vtkMultiPieceDataSet::SafeDownCast(output);
+
+    for (int i=0; i<rcfi->GetTableNames.Size()-tableCount; i++)
       {
-      vtkDataObject* outComponent =
-        iter->GetCurrentDataObject()->NewInstance();
-      outComposite->SetDataSet(iter, outComponent);
-      outComponent->Delete();
+      vtkTable *table = vtkTable::New();
+      outComposite->SetPiece(itemCount++, table);
+      table->Delete();
       }
-    iter->Delete();
-    }
+
+    for (int i=0; i<rcfi->PutTreeNames.Size()-treeCount; i++)
+      {
+      vtkTree *tree = vtkTree::New();
+      outComposite->SetPiece(itemCount++, tree);
+      tree->Delete();
+      }
+   }
 
   // For now: use the first input information for timing
   if(this->TimeOutput)
@@ -404,10 +518,14 @@ int vtkRCalculatorFilter::RequestData(vtkInformation *vtkNotUsed(request),
 
   // assign vtk variables to R variables
   int numberOfInputs =  inputVector[0]->GetNumberOfInformationObjects();
+  rcfi->PutTableNames.ResetNameIterator();
+  rcfi->PutTreeNames.ResetNameIterator();
+  int treeIndex = 0;
   for ( int i = 0; i < numberOfInputs; i++)
     {
     inpinfo = inputVector[0]->GetInformationObject(i);
     input = inpinfo->Get(vtkDataObject::DATA_OBJECT());
+
     this->ProcessInputDataObject(input);
     }
 
@@ -445,6 +563,8 @@ int vtkRCalculatorFilter::RequestData(vtkInformation *vtkNotUsed(request),
     }
 
   // generate output
+  rcfi->GetTableNames.ResetNameIterator();
+  rcfi->GetTreeNames.ResetNameIterator();
   if (this->ProcessOutputDataObject(output) != 0)
     {
     vtkErrorMacro(<<"Filter does not handle output data type");
@@ -774,11 +894,41 @@ int vtkRCalculatorFilter::ProcessOutputCompositeDataSet(vtkCompositeDataSet * cd
 //----------------------------------------------------------------------------
 int vtkRCalculatorFilter::ProcessInputTable(vtkTable* tIn)
 {
-  if(this->rcfi->PutTableName.size() > 0)
+  std::string name = this->rcfi->PutTableNames.NextName();
+
+  if (name.empty())
     {
-    this->ri->AssignVTKTableToRVariable(tIn, this->rcfi->PutTableName.c_str());
+    // TODO warning and return 0?
+    return 0;
+    }
+
+  return this->ProcessInputTable(name, tIn);
+
+}
+
+
+//----------------------------------------------------------------------------
+int vtkRCalculatorFilter::ProcessInputTable(std::string& name, vtkTable* tIn)
+{
+  if(name.length() > 0)
+    {
+    this->ri->AssignVTKTableToRVariable(tIn, name.c_str());
     }
   return (1);
+
+}
+
+
+//----------------------------------------------------------------------------
+vtkTable* vtkRCalculatorFilter::GetOutputTable(std::string& name)
+{
+
+  if(name.length() > 0)
+    {
+    return this->ri->AssignRVariableToVTKTable(name.c_str());
+    }
+
+  return NULL;
 
 }
 
@@ -786,44 +936,90 @@ int vtkRCalculatorFilter::ProcessInputTable(vtkTable* tIn)
 //----------------------------------------------------------------------------
 int vtkRCalculatorFilter::ProcessOutputTable(vtkTable* tOut)
 {
+  std::string name = rcfi->GetTableNames.NextName();
 
-  if(this->rcfi->GetTableName.size() > 0)
-    {
-    tOut->ShallowCopy(
-      this->ri->AssignRVariableToVTKTable(this->rcfi->GetTableName.c_str()));
-    }
+  if (name.empty())
+   {
+   // TODO warning
+   return 0;
+   }
 
-  return (1);
+  tOut->ShallowCopy(this->GetOutputTable(name));
 
+  return 1;
 }
-
 
 //----------------------------------------------------------------------------
 int vtkRCalculatorFilter::ProcessInputTree(vtkTree* tIn)
 {
+  std::string name = this->rcfi->PutTreeNames.NextName();
 
-  if(this->rcfi->PutTreeName.size() > 0)
+  if (name.empty())
     {
-    this->ri->AssignVTKTreeToRVariable(tIn, this->rcfi->PutTreeName.c_str());
+      // TODO warning
+      return (0);
+    }
+
+  return this->ProcessInputTree(name, tIn);
+}
+
+//----------------------------------------------------------------------------
+int vtkRCalculatorFilter::ProcessInputTree(std::string& name, vtkTree* tIn)
+{
+
+  if(name.size() > 0)
+    {
+    this->ri->AssignVTKTreeToRVariable(tIn, name.c_str());
     }
   return (1);
 
 }
 
+//----------------------------------------------------------------------------
+vtkTree* vtkRCalculatorFilter::GetOutputTree(std::string& name)
+{
+
+  if(name.length() > 0)
+    {
+    return this->ri->AssignRVariableToVTKTree(name.c_str());
+    }
+  return (NULL);
+
+}
 
 //----------------------------------------------------------------------------
 int vtkRCalculatorFilter::ProcessOutputTree(vtkTree* tOut)
 {
+  std::string name = rcfi->GetTreeNames.NextName();
 
-  if(this->rcfi->GetTreeName.size() > 0)
+  if (name.empty())
     {
-    tOut->ShallowCopy(
-      this->ri->AssignRVariableToVTKTree(this->rcfi->GetTreeName.c_str()));
+      // TODO warning
+      return (0);
     }
+
+  tOut->ShallowCopy(this->GetOutputTree(name));
+
+  return (1);
+}
+
+//----------------------------------------------------------------------------
+int vtkRCalculatorFilter::ProcessOutputTree(int nameIndex, vtkTree* tOut)
+{
+
+  std::string name = rcfi->GetTreeNames.NextName();
+
+  if (name.empty())
+    {
+      // TODO warning
+      return (0);
+    }
+
+  tOut->ShallowCopy(this->GetOutputTree(name));
+
   return (1);
 
 }
-
 
 //----------------------------------------------------------------------------
 int vtkRCalculatorFilter::SetRscriptFromFile(const char* fname)
@@ -919,7 +1115,7 @@ void vtkRCalculatorFilter::PutTable(const char* NameOfRvar)
 
   if( NameOfRvar && (strlen(NameOfRvar) > 0) )
     {
-    rcfi->PutTableName = NameOfRvar;
+    rcfi->PutTableNames.SetName(NameOfRvar);
     this->Modified();
     }
 
@@ -932,7 +1128,7 @@ void vtkRCalculatorFilter::GetTable(const char* NameOfRvar)
 
   if( NameOfRvar && (strlen(NameOfRvar) > 0) )
     {
-    rcfi->GetTableName = NameOfRvar;
+    rcfi->GetTableNames.SetName(NameOfRvar);
     this->Modified();
     }
 
@@ -945,7 +1141,7 @@ void vtkRCalculatorFilter::PutTree(const char* NameOfRvar)
 
   if( NameOfRvar && (strlen(NameOfRvar) > 0) )
     {
-    rcfi->PutTreeName = NameOfRvar;
+    rcfi->PutTreeNames.SetName(NameOfRvar);
     this->Modified();
     }
 
@@ -958,7 +1154,7 @@ void vtkRCalculatorFilter::GetTree(const char* NameOfRvar)
 
   if( NameOfRvar && (strlen(NameOfRvar) > 0) )
     {
-    rcfi->GetTreeName = NameOfRvar;
+    rcfi->GetTreeNames.SetName(NameOfRvar);
     this->Modified();
     }
 
@@ -969,6 +1165,11 @@ void vtkRCalculatorFilter::GetTree(const char* NameOfRvar)
 void vtkRCalculatorFilter::RemoveAllPutVariables()
 {
   rcfi->PutArrNames.clear();
+  if (this->HasMultiplePuts())
+    {
+    rcfi->PutTreeNames.Clear();
+    rcfi->PutTableNames.Clear();
+    }
   this->Modified();
 }
 
@@ -977,6 +1178,11 @@ void vtkRCalculatorFilter::RemoveAllPutVariables()
 void vtkRCalculatorFilter::RemoveAllGetVariables()
 {
   rcfi->GetArrNames.clear();
+  if (this->HasMultipleGets())
+    {
+    rcfi->GetTreeNames.Clear();
+    rcfi->GetTableNames.Clear();
+    }
   this->Modified();
 }
 
@@ -1076,4 +1282,45 @@ int vtkRCalculatorFilter::ProcessOutputDataObject(vtkDataObject *output)
     }
 
   return 1;
+}
+
+void vtkRCalculatorFilter::PutTables(vtkStringArray* NamesOfRVars)
+{
+  rcfi->PutTableNames.SetNames(NamesOfRVars);
+  this->Modified();
+}
+
+void vtkRCalculatorFilter::GetTables(vtkStringArray* NamesOfRvars)
+{
+  rcfi->GetTableNames.SetNames(NamesOfRvars);
+  this->Modified();
+}
+
+void vtkRCalculatorFilter::PutTrees(vtkStringArray* NamesOfRvars)
+{
+  rcfi->PutTreeNames.SetNames(NamesOfRvars);
+  this->Modified();
+}
+
+void vtkRCalculatorFilter::GetTrees(vtkStringArray* NamesOfRvars)
+{
+  rcfi->GetTreeNames.SetNames(NamesOfRvars);
+  this->Modified();
+}
+
+int vtkRCalculatorFilter::HasMultipleGets()
+{
+  return (rcfi->GetTreeNames.Size() > 1 || rcfi->GetTableNames.Size() > 1);
+
+}
+
+int vtkRCalculatorFilter::HasMultiplePuts()
+{
+  return (rcfi->PutTreeNames.Size() > 1 || rcfi->PutTableNames.Size() > 1);
+}
+
+int vtkRCalculatorFilter::IsAsymmetric()
+{
+  return (rcfi->PutTreeNames.Size() != rcfi->GetTreeNames.Size() ||
+          rcfi->PutTableNames.Size() != rcfi->GetTableNames.Size());
 }

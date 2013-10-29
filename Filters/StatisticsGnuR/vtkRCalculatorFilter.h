@@ -38,6 +38,7 @@
 
 #include "vtkFiltersStatisticsGnuRModule.h" // For export macro
 #include "vtkDataObjectAlgorithm.h"
+#include <string>
 
 class vtkRInterface;
 class vtkRCalculatorFilterInternals;
@@ -48,6 +49,7 @@ class vtkTree;
 class vtkTable;
 class vtkCompositeDataSet;
 class vtkArrayData;
+class vtkStringArray;
 
 class VTKFILTERSSTATISTICSGNUR_EXPORT vtkRCalculatorFilter : public vtkDataObjectAlgorithm
 {
@@ -91,11 +93,22 @@ public:
   void GetTable(const char* NameOfRvar);
 
   // Description:
+  // TODO
+  void PutTables(vtkStringArray* NamesOfRVars);
+  void GetTables(vtkStringArray* NamesOfRVars);
+
+  // Description:
   // For vtkTree input to the filter.  An R phylo tree variable is created for the
   // vtkTree input using PutTree().  The output of the filter can be set from
   // a phylo tree variable in R using GetTree()
   void PutTree(const char* NameOfRvar);
   void GetTree(const char* NameOfRvar);
+
+  // Description:
+  // TODO
+  void PutTrees(vtkStringArray* NamesOfRvars);
+  void GetTrees(vtkStringArray* NamesOfRvars);
+
 
   // Description:
   // Script executed by R.  Can also be set from a file.
@@ -172,13 +185,24 @@ private:
   int ProcessOutputCompositeDataSet(vtkCompositeDataSet * cdsOut);
 
   int ProcessInputTable(vtkTable* tOut);
+  int ProcessInputTable(std::string& name, vtkTable* tIn);
+
+  vtkTable* GetOutputTable(std::string& name);
   int ProcessOutputTable(vtkTable* tOut);
+  int ProcessOutputTable(int nameIndex, vtkTable* tOut);
 
   int ProcessInputTree(vtkTree* tIn);
+  int ProcessInputTree(std::string& name, vtkTree* tIn);
+
+  vtkTree* GetOutputTree(std::string& name);
   int ProcessOutputTree(vtkTree* tOut);
+  int ProcessOutputTree(int nameIndex, vtkTree* tOut);
 
   int ProcessInputDataObject(vtkDataObject *input);
   int ProcessOutputDataObject(vtkDataObject *input);
+  int HasMultipleGets();
+  int HasMultiplePuts();
+  int IsAsymmetric();
 
   vtkRInterface* ri;
   char* Rscript;
