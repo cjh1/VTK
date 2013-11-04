@@ -337,7 +337,7 @@ int vtkRCalculatorFilter::RequestDataObject(
 
         }
 
-      if (this->IsAsymmetric() || this->HasMultipleGets())
+      if (this->HasMultipleGets())
         {
         if (!output || !output->IsA("vtkMultiPieceDataSet"))
           {
@@ -450,7 +450,7 @@ int vtkRCalculatorFilter::RequestData(vtkInformation *vtkNotUsed(request),
       table->Delete();
       }
 
-    for (int i=0; i<rcfi->PutTreeNames.Size()-treeCount; i++)
+    for (int i=0; i<rcfi->GetTreeNames.Size()-treeCount; i++)
       {
       vtkTree *tree = vtkTree::New();
       outComposite->SetPiece(itemCount++, tree);
