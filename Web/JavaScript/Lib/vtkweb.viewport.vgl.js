@@ -276,13 +276,13 @@
     function pushCameraState() {
       if(m_viewer !== null) {
         var cam =  m_viewer.renderWindow().activeRenderer().camera(),
-            fp_ = cam.getFocalPoint(),
-            up_ = cam.getViewUp(),
-            pos_ = cam.getPosition(),
+            fp_ = cam.focalPoint(),
+            up_ = cam.viewUpDirection(),
+            pos_ = cam.position(),
             fp = [fp_[0], fp_[1], fp_[2]],
             up = [up_[0], up_[1], up_[2]],
             pos = [pos_[0], pos_[1], pos_[2]];
-        session.call("vtk:updateCamera", Number(m_options.view), fp, up, pos);
+        m_session.call("vtk:updateCamera", Number(m_options.view), fp, up, pos);
       }
     }
 
