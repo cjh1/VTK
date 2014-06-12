@@ -118,7 +118,6 @@
     m_ctx2d = m_canvas2D.getContext('2d'),
     gl = m_canvas3D.getContext("webgl") || m_canvas3D.getContext("experimental-webgl"),
     m_rendererAttrs = $(m_divContainer).addClass(FACTORY_KEY).css(RENDERER_CSS).append($(m_canvas2D).css(RENDERER_CSS).css(RENDERER_CSS_2D)).append($(m_canvas3D).css(RENDERER_CSS).css(RENDERER_CSS_3D)),
-    m_sceneData = null,
     m_sceneJSON = null,
     m_objectHandler = create3DObjectHandler(),
     m_vglVtkReader = vgl.vtkReader(),
@@ -139,9 +138,6 @@
         stat_value: 0
       });
       m_session.call("vtk:getSceneMetaData", Number(m_options.view)).then(function(data) {
-        if (m_sceneData === data) {
-          return;
-        }
         m_sceneData = data;
         m_sceneJSON = JSON.parse(data);
         m_vglVtkReader.setVtkScene(m_sceneJSON);
@@ -204,8 +200,8 @@
                 m_vglActors[key] = actor;
                 renderer.addActor(actor);
             }
-
-            // call render on viewer
+            // Mark the actor as valid
+            actor.invalid = false;
 
             // Redraw the scene
             drawScene();
@@ -278,12 +274,25 @@
     // ------------------------------------------------------------------
 
     function updateScene() {
+      var key;
+
       try{
         if(m_sceneJSON === null || typeof(m_sceneJSON) === "undefined") {
           return;
         }
 
         m_vglVtkReader.initScene();
+
+        // Mark all actors as invalid
+        for (key in m_vglActors) {
+          if (m_vglActors[key].invalid !== undefined &&
+              !m_vglActors[key].invalid) {
+            delete m_vglActors[key];
+          }
+          else {
+            m_vglActors[key].invalid = true;
+          }
+        }
 
         // Fetch the object that we are missing
         m_objectHandler.fetchMissingObjects(fetchObject, m_sceneJSON);
