@@ -118,6 +118,21 @@ class TestNumpySupport(Testing.vtkTest):
         x = a[::2,::2]
         self.assertRaises(AssertionError, numpy_to_vtk, x)
 
+    def testNumpyReduce(self):
+       "Test that reducing methods return scalars."
+       vtk_array = vtk.vtkLongArray()
+       for i in range(0, 10):
+           vtk_array.InsertNextValue(i)
+
+       numpy_array = vtk_to_numpy(vtk_array)
+       s = numpy_array.sum()
+       self.assertEqual(s, 45)
+       self.assertEqual(s.dtype, numpy.int64)
+
+       m = numpy_array.mean()
+       self.assertEqual(m, 4.5)
+       self.assertEqual(m.dtype, numpy.float64)
+
 if __name__ == "__main__":
     Testing.main([(TestNumpySupport, 'test')])
 
