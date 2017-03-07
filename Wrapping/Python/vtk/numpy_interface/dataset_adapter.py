@@ -275,10 +275,8 @@ class VTKArray(numpy.ndarray):
         obj.Association = ArrayAssociation.FIELD
         # add the new attributes to the created instance
         obj.VTKObject = array
-        # if dataset:
-        #     import weakref
-        #     obj.DataSet = weakref.ref(dataset)
-        obj.DataSet = dataset
+        if dataset:
+            obj._dataset = weakref.ref(dataset)
         # Finally, we must return the newly created object:
         return obj
 
@@ -316,6 +314,14 @@ class VTKArray(numpy.ndarray):
             return out_arr[()]
         else:
             return numpy.ndarray.__array_wrap__(self, out_arr, context)
+
+    @property
+    def DataSet(self):
+        return self._dataset() if self._dataset is not None else None
+
+    @DataSet.setter
+    def DataSet(self, dataset):
+        self._dataset = weakref.ref(dataset) if dataset is not None else None
 
 class VTKNoneArrayMetaClass(type):
     def __new__(mcs, name, parent, attr):
