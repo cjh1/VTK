@@ -249,11 +249,6 @@ class VTKArrayMetaClass(type):
         add_default_numeric_op("gt")
         return type.__new__(mcs, name, parent, attr)
 
-def bye(obj):
-    print('collected!: ' + str(obj))
-
-pin = []
-
 @_metaclass(VTKArrayMetaClass)
 class VTKArray(numpy.ndarray):
     """This is a sub-class of numpy ndarray that stores a
@@ -282,11 +277,7 @@ class VTKArray(numpy.ndarray):
         obj.VTKObject = array
         obj._dataset = None
         if dataset:
-            print(dataset)
-            #pin.append(dataset.VTKObject)
-            print("type: %s" % type(dataset.VTKObject))
-            #dataset.VTKObject.AddObserver('DeleteEvent', _MakeObserver())
-            obj._dataset = weakref.ref(dataset.VTKObject, bye)
+            obj._dataset = weakref.ref(dataset.VTKObject)
         # Finally, we must return the newly created object:
         return obj
 
@@ -327,10 +318,6 @@ class VTKArray(numpy.ndarray):
 
     @property
     def DataSet(self):
-        #print(type(self._dataset() if self._dataset is not None else None))
-        #print(self._dataset is not None)
-        print(self._dataset)
-        #print(self._dataset())
         return WrapDataObject(self._dataset()) if self._dataset else None
 
     @DataSet.setter
@@ -1093,12 +1080,8 @@ def WrapDataObject(ds):
     elif ds.IsA("vtkPointSet"):
         return PointSet(ds)
     elif ds.IsA("vtkDataSet"):
-        ds = DataSet(ds)
-        print(ds)
-        return ds
+        return DataSet(ds)
     elif ds.IsA("vtkCompositeDataSet"):
-        cd = CompositeDataSet(ds)
-        print(cd)
-        return cd
+        return CompositeDataSet(ds)
     elif ds.IsA("vtkTable"):
         return Table(ds)

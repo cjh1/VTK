@@ -73,7 +73,6 @@ d1 = multi.GetBlock(0)
 d2 = multi.GetBlock(1)
 cd = dsa.CompositeDataSet(g.GetOutput())
 randomVec = cd.PointData['BrownianVectors']
-ds = randomVec.DataSet.VTKObject
 elev = cd.PointData['Elevation']
 
 cd2 = dsa.CompositeDataSet(g2.GetOutput())
@@ -204,7 +203,7 @@ pdw.PointData.append(na, 'foo')
 assert pdw.PointData.GetNumberOfArrays() == 0
 
 # --------------------------------------
-print('array: %s' % randomVec.Arrays[0].VTKObject)
+
 na2 = dsa.VTKCompositeDataArray([randomVec.Arrays[0], na])
 
 # Test operators
