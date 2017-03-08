@@ -68,9 +68,12 @@ g3.AddInputConnection(elev3.GetOutputPort())
 g3.AddInputConnection(elev3.GetOutputPort())
 
 g3.Update()
-
+multi = g.GetOutput()
+d1 = multi.GetBlock(0)
+d2 = multi.GetBlock(1)
 cd = dsa.CompositeDataSet(g.GetOutput())
 randomVec = cd.PointData['BrownianVectors']
+ds = randomVec.DataSet.VTKObject
 elev = cd.PointData['Elevation']
 
 cd2 = dsa.CompositeDataSet(g2.GetOutput())
@@ -151,6 +154,10 @@ g2.Update()
 
 sphere = dsa.CompositeDataSet(g2.GetOutput())
 
+multi = g2.GetOutput()
+d11 = multi.GetBlock(0)
+d22 = multi.GetBlock(1)
+
 vn = algs.vertex_normal(sphere)
 compare(algs.mag(vn) - 1, 1E-6)
 
@@ -197,7 +204,7 @@ pdw.PointData.append(na, 'foo')
 assert pdw.PointData.GetNumberOfArrays() == 0
 
 # --------------------------------------
-
+print('array: %s' % randomVec.Arrays[0].VTKObject)
 na2 = dsa.VTKCompositeDataArray([randomVec.Arrays[0], na])
 
 # Test operators

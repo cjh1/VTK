@@ -249,6 +249,11 @@ class VTKArrayMetaClass(type):
         add_default_numeric_op("gt")
         return type.__new__(mcs, name, parent, attr)
 
+def bye(obj):
+    print('collected!: ' + str(obj))
+
+pin = []
+
 @_metaclass(VTKArrayMetaClass)
 class VTKArray(numpy.ndarray):
     """This is a sub-class of numpy ndarray that stores a
@@ -275,8 +280,13 @@ class VTKArray(numpy.ndarray):
         obj.Association = ArrayAssociation.FIELD
         # add the new attributes to the created instance
         obj.VTKObject = array
+        obj._dataset = None
         if dataset:
-            obj._dataset = weakref.ref(dataset)
+            print(dataset)
+            #pin.append(dataset.VTKObject)
+            print("type: %s" % type(dataset.VTKObject))
+            #dataset.VTKObject.AddObserver('DeleteEvent', _MakeObserver())
+            obj._dataset = weakref.ref(dataset.VTKObject, bye)
         # Finally, we must return the newly created object:
         return obj
 
@@ -317,11 +327,15 @@ class VTKArray(numpy.ndarray):
 
     @property
     def DataSet(self):
-        return self._dataset() if self._dataset is not None else None
+        #print(type(self._dataset() if self._dataset is not None else None))
+        #print(self._dataset is not None)
+        print(self._dataset)
+        #print(self._dataset())
+        return WrapDataObject(self._dataset()) if self._dataset else None
 
     @DataSet.setter
     def DataSet(self, dataset):
-        self._dataset = weakref.ref(dataset) if dataset is not None else None
+        self._dataset = weakref.ref(dataset.VTKObject) if dataset else None
 
 class VTKNoneArrayMetaClass(type):
     def __new__(mcs, name, parent, attr):
@@ -1079,8 +1093,12 @@ def WrapDataObject(ds):
     elif ds.IsA("vtkPointSet"):
         return PointSet(ds)
     elif ds.IsA("vtkDataSet"):
-        return DataSet(ds)
+        ds = DataSet(ds)
+        print(ds)
+        return ds
     elif ds.IsA("vtkCompositeDataSet"):
-        return CompositeDataSet(ds)
+        cd = CompositeDataSet(ds)
+        print(cd)
+        return cd
     elif ds.IsA("vtkTable"):
         return Table(ds)
