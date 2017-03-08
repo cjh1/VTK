@@ -282,6 +282,7 @@ SET(Module_SRCS
   vtkType.h
   vtkSystemIncludes.h
   vtkWrappingHints.h
+  vtkWeakObjectRef.cxx
   ${VTK_SMP_SOURCES}
   ${VTK_SMP_HEADERS}
   ${CMAKE_CURRENT_BINARY_DIR}/vtkConfigure.h
@@ -340,6 +341,7 @@ set(${vtk-module}_HDRS
   ${CMAKE_CURRENT_BINARY_DIR}/vtkArrayDispatchArrayList.h
   ${CMAKE_CURRENT_BINARY_DIR}/vtkToolkits.h
   ${CMAKE_CURRENT_BINARY_DIR}/vtkTypeListMacros.h
+  vtkWeakObjectRef.h
   )
 
 if(vtkCommonDataModel_ENABLED)
